@@ -351,6 +351,287 @@ table.t tr:last-child td{border-bottom:none}
 </div>
 </div>
 
-<script src="app.js"></script>
+<script>
+const API="https://script.google.com/macros/s/AKfycbwrw-sXCTiXRjRu8JLI4NJRfxfhfAcMbTR6a_LtnaSQZh25Q_E3SU0vc_0QSo8zqondvA/exec";
+let role="",hall="",token="",items=[],vendors=[],snap={},checked=new Set(),reportData=null;
+const $=id=>document.getElementById(id);
+const showLoad=(m="載入中...")=>{$("lmsg").textContent=m;$("lov").classList.add("show")};
+const hideLoad=()=>$("lov").classList.remove("show");
+let _tt;const toast=(m,t="")=>{const el=$("toast");el.textContent=m;el.className="toast show"+(t?" "+t:"");clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove("show"),2800)};
+function go(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));$(id).classList.add("active");window.scrollTo(0,0)}
+async function GET(p){p.token=token;const r=await fetch(API+"?"+new URLSearchParams(p));const t=await r.text();try{return JSON.parse(t)}catch(e){return{ok:false,error:"回應格式錯誤"}}}
+async function POST(b){b.token=token;const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(b)});const t=await r.text();try{return JSON.parse(t)}catch(e){return{ok:false,error:"回應格式錯誤"}}}
+
+function selRole(r){role=r;document.querySelectorAll(".rcard").forEach(c=>c.classList.remove("sel"));$("rc-"+r).classList.add("sel");$("pinarea").style.display="block";$("pinlabel").textContent=r==="admin"?"管理員密碼":"同仁通行碼";$("pininput").value="";$("pinerr").style.display="none";setTimeout(()=>$("pininput").focus(),100)}
+async function doLogin(){const pin=$("pininput").value;if(!pin)return;showLoad("驗證中...");try{const res=await GET({action:"authCheck",role,pin});hideLoad();if(res.ok){token=res.token;$("pinerr").style.display="none";if(role==="staff")go("sh");else{go("sa");loadAdmin();}}else{$("pinerr").textContent=res.msg||"密碼錯誤";$("pinerr").style.display="block";}}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+const HC={HQ:{title:"總部盤點",badge:"總部・倉儲",tc:"purple",bc:"purple"},A:{title:"A館盤點",badge:"A館・宜蘭市",tc:"green",bc:"green"},B:{title:"B館盤點",badge:"B館・壯圍鄉",tc:"green",bc:"green"}};
+async function enterHall(h){hall=h;checked=new Set();const cfg=HC[h];$("stitle").textContent=cfg.title;$("sbadge").textContent=cfg.badge;$("stb").className="topbar "+cfg.tc;$("reqbadge").textContent=cfg.badge;$("laundrybadge").textContent=cfg.badge;go("ss");await loadStock();}
+async function loadStock(){showLoad("載入庫存...");try{const res=await GET({action:"getItems"});hideLoad();if(!res.ok){toast("載入失敗","error");return}items=res.items;renderStock();}catch(e){hideLoad();toast("網路錯誤","error")}}
+function getSafe(it,h){return h==="HQ"?it.safeHQ:it.safeAB}
+function renderStock(){
+  const key=hall==="HQ"?"hq":hall==="A"?"a":"b";const cfg=HC[hall];
+  const cats=[...new Set(items.map(x=>x.cat))];
+  // 同仁端：A/B館顯示「內部需求單」；總部不顯示（總部用後台叫貨）
+  let html="";
+  if(hall!=="HQ"){
+    html+=`<div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="sbtn orange" style="flex:1;padding:11px;margin:0" onclick="goRequest()"><i class="ti ti-inbox"></i> 內部需求單</button>
+      <button class="sbtn purple" style="flex:1;padding:11px;margin:0" onclick="goLaundry()"><i class="ti ti-wash"></i> 送洗管理</button>
+    </div>`;
+  }else{
+    html+=`<div style="margin-bottom:14px"><button class="sbtn purple" style="margin:0" onclick="goLaundry()"><i class="ti ti-wash"></i> 送洗管理</button></div>`;
+  }
+  cats.forEach(cat=>{
+    html+=`<div class="catlabel">${cat}</div>`;
+    items.filter(x=>x.cat===cat).forEach(item=>{
+      const qty=item[key],safe=getSafe(item,hall),isZ=qty===0,isL=!isZ&&qty<=safe;
+      const cc=isZ?"zero":isL?"low":"",nc=isZ?"zero":isL?"low":"ok";
+      const wt=isZ?`<span class="wtag zero"><i class="ti ti-alert-octagon"></i> 歸零</span>`:isL?`<span class="wtag low"><i class="ti ti-alert-triangle"></i> 需補貨</span>`:"";
+      html+=`<div class="icard ${cc}" id="card-${item.id}">
+        <div class="ictop"><div><div class="icnm">${item.name}</div><div class="icid">${item.id}</div></div>
+        <div><div class="icqn ${nc}">${qty}</div><div class="icql">現有數量</div></div></div>
+        <div class="icsafe"><i class="ti ti-shield-half" style="font-size:14px;color:var(--gr6)"></i><span>安全庫存：<strong>${safe}</strong></span>${item.moq?`<span style="font-size:11px;color:var(--gr4);margin-left:4px">最低叫貨：${item.moq}</span>`:""}${wt}</div>
+        <div class="icinp"><input type="number" min="0" step="0.1" id="inp-${item.id}" placeholder="盤點數量" inputmode="decimal">
+          <button class="iupdbtn ${cfg.bc}" id="btn-${item.id}" onclick="submitCount('${item.id}')"><i class="ti ti-check"></i> 更新</button></div>
+      </div>`;
+    });
+  });
+  $("scontent").innerHTML=html;
+  $("tot-cnt").textContent=items.length;$("chk-cnt").textContent=0;$("confirmbtn").disabled=true;
+}
+async function submitCount(itemId){
+  const inp=$("inp-"+itemId),btn=$("btn-"+itemId);const val=parseFloat(inp.value);
+  if(isNaN(val)||val<0){toast("請輸入有效數量（可輸入小數如 0.5）","error");return}
+  btn.classList.add("loading");btn.innerHTML='<i class="ti ti-loader-2"></i>';
+  try{const res=await POST({action:"updateStock",itemId,hall,qty:val});
+    if(res.ok){inp.value="";checked.add(itemId);$("card-"+itemId).classList.add("checked");$("chk-cnt").textContent=checked.size;$("confirmbtn").disabled=false;
+      const key=hall==="HQ"?"hq":hall==="A"?"a":"b";const it=items.find(x=>x.id===itemId);
+      if(it){it[key]=val;const qel=document.querySelector(`#card-${itemId} .icqn`);if(qel){const safe=getSafe(it,hall),isZ=val===0,isL=!isZ&&val<=safe;qel.className="icqn "+(isZ?"zero":isL?"low":"ok");qel.textContent=parseFloat(val.toFixed(1));}}
+      toast("已更新 ✓","success");
+    }else toast(res.error||"更新失敗","error");
+  }catch(e){toast("網路錯誤","error")}
+  btn.classList.remove("loading");btn.innerHTML='<i class="ti ti-check"></i> 更新';
+}
+async function confirmAll(){if(!checked.size)return;showLoad("送出盤點確認...");try{const res=await POST({action:"confirmCount",hall,checkedIds:[...checked],note:""});hideLoad();if(res.ok){toast(`盤點完成！共 ${checked.size} 項 ✓`,"success");checked=new Set();$("chk-cnt").textContent=0;$("confirmbtn").disabled=true;document.querySelectorAll(".icard.checked").forEach(c=>c.classList.remove("checked"));}else toast("確認失敗","error");}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 內部需求單
+function goRequest(){go("srequest");renderReqForm()}
+function renderReqForm(){
+  $("reqcontent").innerHTML=`<div class="formcard">
+    <h3><i class="ti ti-inbox" style="color:#795548"></i> 跟總部叫備品</h3>
+    <div class="infob orange"><i class="ti ti-info-circle"></i> 此單會送給總部，由總部統一調撥或對廠商叫貨</div>
+    <div class="frow"><label>申請人</label><input type="text" id="req-person" placeholder="您的名字"></div>
+    <div id="req-rows"></div>
+    <button class="sbtn orange" onclick="addReqRow()"><i class="ti ti-plus"></i> 新增品項</button>
+    <div class="frow"><label>備注</label><textarea id="req-note" placeholder="例：快用完了、客滿需要多備..."></textarea></div>
+    <button class="sbtn orange" onclick="submitRequest()"><i class="ti ti-send"></i> 送出需求單</button>
+  </div>`;
+  addReqRow();
+}
+function addReqRow(){const opts=items.map(i=>`<option value="${i.id}" data-name="${i.name}">${i.name}</option>`).join("");const d=document.createElement("div");d.className="fgrid2";d.innerHTML=`<div class="frow"><label>品項</label><select class="req-item">${opts}</select></div><div class="frow"><label>數量</label><input type="number" min="1" class="req-qty" placeholder="數量"></div>`;$("req-rows").appendChild(d)}
+async function submitRequest(){
+  const person=$("req-person").value.trim(),note=$("req-note").value.trim();
+  const sels=document.querySelectorAll(".req-item"),qtys=document.querySelectorAll(".req-qty");
+  const reqItems=[];sels.forEach((s,i)=>{const q=parseInt(qtys[i]?.value);if(q>0)reqItems.push({itemId:s.value,itemName:s.options[s.selectedIndex].dataset.name,qty:q})});
+  if(!reqItems.length){toast("請至少新增一個品項","error");return}
+  showLoad("送出需求單...");
+  try{const res=await POST({action:"submitRequest",hall,applicant:person,items:reqItems,note});hideLoad();
+    if(res.ok){toast(`需求單 ${res.requestId} 已送出 ✓`,"success");setTimeout(()=>go("sh"),1200);}else toast(res.error||"失敗","error");
+  }catch(e){hideLoad();toast("網路錯誤","error")}
+}
+
+// 送洗
+async function goLaundry(){go("slaundry");showLoad("載入送洗資料...");try{const res=await GET({action:"getLaundry"});hideLoad();renderLaundryStaff(res.ok?res.laundry:[])}catch(e){hideLoad();toast("載入失敗","error")}}
+function renderLaundryStaff(laundry){
+  const lnItems=items.filter(x=>x.cat==="布巾寢具");
+  const pending=laundry.filter(l=>l.hall===hall&&l.status==="送洗中");
+  const grp={};pending.forEach(l=>{if(!grp[l.laundryId])grp[l.laundryId]={id:l.laundryId,time:l.time,items:[]};grp[l.laundryId].items.push(l)});
+  let html=`<div class="formcard"><h3><i class="ti ti-wash" style="color:#4E342E"></i> 送洗出庫</h3><div id="lnd-rows"></div>
+    <button class="sbtn purple" onclick="addLndRow()"><i class="ti ti-plus"></i> 新增品項</button>
+    <div class="frow" style="margin-top:8px"><label>備注</label><input type="text" id="lnd-note" placeholder="例：送連美洗衣"></div>
+    <button class="sbtn purple" onclick="submitLaundry()"><i class="ti ti-send"></i> 確認送洗出庫</button></div>`;
+  Object.values(grp).forEach(g=>{html+=`<div class="formcard"><h3><i class="ti ti-clock" style="color:#4E342E"></i> 送洗中 <span style="font-size:12px;color:var(--gr6)">${g.id}</span></h3>`;
+    g.items.forEach(l=>{html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px"><span>${l.itemName}</span><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--gr6)">送 ${l.qty}・回：</span><input type="number" min="0" value="${l.qty}" id="ret-${l.laundryId}-${l.itemId}" style="width:56px;padding:5px;border:1.5px solid var(--gr2);border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--gr1);outline:none"></div></div>`});
+    html+=`<button class="sbtn green" onclick="returnLaundry('${g.id}',${JSON.stringify(g.items.map(i=>i.itemId))})"><i class="ti ti-check"></i> 確認取回</button></div>`});
+  $("laundrycontent").innerHTML=html;addLndRow();
+}
+function addLndRow(){const lnItems=items.filter(x=>x.cat==="布巾寢具");const opts=lnItems.map(i=>`<option value="${i.id}" data-name="${i.name}">${i.name}</option>`).join("");const d=document.createElement("div");d.className="fgrid2";d.innerHTML=`<div class="frow"><label>品項</label><select class="lnd-item">${opts}</select></div><div class="frow"><label>件數</label><input type="number" min="1" class="lnd-qty" placeholder="件數"></div>`;$("lnd-rows").appendChild(d)}
+async function submitLaundry(){const sels=document.querySelectorAll(".lnd-item"),qtys=document.querySelectorAll(".lnd-qty");const lndItems=[];sels.forEach((s,i)=>{const q=parseInt(qtys[i]?.value);if(q>0)lndItems.push({itemId:s.value,itemName:s.options[s.selectedIndex].dataset.name,qty:q})});if(!lndItems.length){toast("請至少新增一個品項","error");return}showLoad("記錄送洗...");try{const res=await POST({action:"submitLaundry",hall,items:lndItems,note:$("lnd-note")?.value||""});hideLoad();if(res.ok){toast(`送洗記錄已建立 ✓`,"success");goLaundry();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+async function returnLaundry(laundryId,itemIds){const returnQty={};itemIds.forEach(id=>{const el=$(`ret-${laundryId}-${id}`);if(el)returnQty[id]=parseInt(el.value)||0});showLoad("確認取回...");try{const res=await POST({action:"updateLaundry",laundryId,returnQty});hideLoad();if(res.ok){toast("取回已確認 ✓","success");goLaundry();}else toast("失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// ════ 管理後台 ════
+async function loadAdmin(){
+  showLoad("載入後台資料...");
+  try{
+    const[ir,vr,lr,rr,or_,ib,tr,lnd]=await Promise.all([GET({action:"getItems"}),GET({action:"getVendors"}),GET({action:"getLogs"}),GET({action:"getRequests"}),GET({action:"getOrders"}),GET({action:"getInbounds"}),GET({action:"getTransfers"}),GET({action:"getLaundry"})]);
+    hideLoad();
+    if(ir.ok){items=ir.items;renderInvTable(ir.items);renderPriceTable(ir.items);renderSafeTable(ir.items);renderAlertTab(ir.items);snap={};ir.items.forEach(x=>{snap[x.id]={hq:x.hq,a:x.a,b:x.b}});const cats=[...new Set(ir.items.map(x=>x.cat))];const sel=$("inv-cat");sel.innerHTML='<option value="">全部</option>';cats.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;sel.appendChild(o)});renderTrRows();renderOrdRows();renderIbRows();}
+    if(vr.ok){vendors=vr.vendors;const vsel=$("ni-vendor");vsel.innerHTML='<option value="">未指定</option>';vendors.forEach(v=>{const o=document.createElement("option");o.value=v.name;o.textContent=v.name;vsel.appendChild(o)});}
+    if(lr.ok)renderLogs(lr.logs);
+    if(rr.ok)renderRequests(rr.requests);
+    if(or_.ok)renderOrdList(or_.orders);
+    if(ib.ok)renderIbList(ib.inbounds);
+    if(tr.ok)renderTrList(tr.transfers);
+    if(lnd.ok)renderLaundryAdmin(lnd.laundry);
+  }catch(e){hideLoad();toast("載入失敗","error")}
+}
+
+function renderInvTable(its){let rows="";its.forEach(item=>{const hC=item.hq===0?"danger":item.hq<=item.safeHQ?"warnc":"",aC=item.a===0?"danger":item.a<=item.safeAB?"warnc":"",bC=item.b===0?"danger":item.b<=item.safeAB?"warnc":"";const upd=item.updated?item.updated.replace(/\d{4}\//,"").replace(/:00$/,""):"–";rows+=`<tr data-name="${item.name.toLowerCase()}" data-cat="${item.cat}"><td class="ntd"><div>${item.name}</div><div class="idtag">${item.id}</div></td><td class="${hC}"><input type="number" min="0" step="0.1" value="${item.hq}" id="inv-hq-${item.id}"></td><td class="${aC}"><input type="number" min="0" step="0.1" value="${item.a}" id="inv-a-${item.id}"></td><td class="${bC}"><input type="number" min="0" step="0.1" value="${item.b}" id="inv-b-${item.id}"></td><td style="font-size:10px;color:var(--gr4)">${upd}</td></tr>`});$("inv-tbody").innerHTML=rows}
+function filterTable(){const q=$("inv-search").value.toLowerCase(),cat=$("inv-cat").value;document.querySelectorAll("#inv-tbody tr").forEach(r=>{r.style.display=(!q||r.dataset.name.includes(q))&&(!cat||r.dataset.cat===cat)?"":"none"})}
+async function saveAdmin(){const ch=[];items.forEach(item=>{const nHQ=parseFloat($("inv-hq-"+item.id)?.value)||0,nA=parseFloat($("inv-a-"+item.id)?.value)||0,nB=parseFloat($("inv-b-"+item.id)?.value)||0,o=snap[item.id]||{hq:item.hq,a:item.a,b:item.b};if(nHQ!==o.hq)ch.push({itemId:item.id,hall:"HQ",qty:nHQ});if(nA!==o.a)ch.push({itemId:item.id,hall:"A",qty:nA});if(nB!==o.b)ch.push({itemId:item.id,hall:"B",qty:nB})});if(!ch.length){toast("沒有變更");return}showLoad(`儲存 ${ch.length} 筆...`);try{const res=await POST({action:"adminSave",changes:ch});hideLoad();if(res.ok){toast(`已儲存 ${ch.length} 筆 ✓`,"success");loadAdmin();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 調撥
+function renderTrRows(){$("tr-rows").innerHTML="";addTrRow()}
+function addTrRow(){const opts=items.map(i=>`<option value="${i.id}" data-name="${i.name}">${i.name}（總部:${i.hq}）</option>`).join("");const d=document.createElement("div");d.className="fgrid2";d.innerHTML=`<div class="frow"><label>品項</label><select class="tr-item">${opts}</select></div><div class="frow"><label>撥出數量</label><input type="number" min="1" step="0.1" class="tr-qty" placeholder="數量"></div>`;$("tr-rows").appendChild(d)}
+async function submitTransfer(){const toHall=$("tr-hall").value;const sels=document.querySelectorAll(".tr-item"),qtys=document.querySelectorAll(".tr-qty");const transfers=[];sels.forEach((s,i)=>{const q=parseFloat(qtys[i]?.value);if(q>0)transfers.push({itemId:s.value,itemName:s.options[s.selectedIndex].dataset.name,qty:q,toHall})});if(!transfers.length){toast("請至少新增一個品項","error");return}showLoad("調撥中...");try{const res=await POST({action:"submitTransfer",transfers,note:$("tr-note").value});hideLoad();if(res.ok){toast(`調撥完成 ✓`,"success");loadAdmin();stab("transfer");}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+function renderTrList(transfers){if(!transfers?.length){$("tr-list").innerHTML="";return}const grp={};transfers.forEach(t=>{if(!grp[t.transferId])grp[t.transferId]={...t,lines:[]};grp[t.transferId].lines.push(t)});let html=`<div style="font-size:13px;font-weight:600;color:var(--gr6);margin:12px 0 8px">調撥紀錄</div>`;Object.values(grp).forEach(g=>{html+=`<div class="formcard"><div style="font-size:13px;color:var(--gr6);margin-bottom:8px">${g.time}・撥往 <strong>${g.toHall}館</strong></div>`;g.lines.forEach(l=>{html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0"><span>${l.itemName}</span><strong>×${l.qty}</strong></div>`});html+=`</div>`});$("tr-list").innerHTML=html}
+
+// 需求單
+function renderRequests(requests){if(!requests?.length){$("req-content").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:40px 0">尚無需求單</p>`;return}const grp={};requests.forEach(r=>{if(!grp[r.requestId])grp[r.requestId]={...r,lines:[]};grp[r.requestId].lines.push(r)});let html="";Object.values(grp).forEach(g=>{const sc=g.status==="待處理"?"st-pending":"st-done";html+=`<div class="formcard"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div><div style="font-size:14px;font-weight:600">${g.requestId}</div><div style="font-size:12px;color:var(--gr6)">${g.time}・${g.hall}館・${g.applicant}</div></div><span class="stbadge ${sc}">${g.status}</span></div>`;g.lines.forEach(l=>{html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--gr1)"><span>${l.itemName}</span><strong>×${l.qty}</strong></div>`});if(g.note)html+=`<div style="font-size:12px;color:var(--gr6);margin-top:8px">備注：${g.note}</div>`;if(g.status==="待處理")html+=`<button class="sbtn green" style="margin-top:12px" onclick="markRequest('${g.requestId}','已處理')"><i class="ti ti-check"></i> 標記已處理</button>`;html+=`</div>`});$("req-content").innerHTML=html}
+async function markRequest(requestId,status){showLoad("更新...");try{const res=await POST({action:"updateRequest",requestId,status});hideLoad();if(res.ok){toast("已標記 ✓","success");GET({action:"getRequests"}).then(r=>{if(r.ok)renderRequests(r.requests)})}else toast("失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 叫貨
+function renderOrdRows(){$("ord-rows").innerHTML="";addOrdRow()}
+function addOrdRow(){const opts=items.map(i=>`<option value="${i.id}" data-name="${i.name}" data-price="${i.price||0}" data-vendor="${i.vendor||""}" data-moq="${i.moq||0}">${i.name}${i.price?" ($"+i.price+")":""}${i.moq?" 最低:"+i.moq:""}${i.vendor?" ・"+i.vendor:""}</option>`).join("");const d=document.createElement("div");d.className="fgrid2";d.innerHTML=`<div class="frow"><label>品項</label><select class="ord-item" onchange="calcOrd()">${opts}</select></div><div class="frow"><label>數量</label><input type="number" min="1" class="ord-qty" placeholder="數量" oninput="calcOrd()"></div>`;$("ord-rows").appendChild(d)}
+function calcOrd(){const sels=document.querySelectorAll(".ord-item"),qtys=document.querySelectorAll(".ord-qty");let total=0;sels.forEach((s,i)=>{const q=parseFloat(qtys[i]?.value)||0,p=parseFloat(s.options[s.selectedIndex]?.dataset.price)||0;total+=q*p});$("ord-total").textContent=total>0?`預估總金額：$${total.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2})}（含稅）`:""}
+async function submitOrder(){const sels=document.querySelectorAll(".ord-item"),qtys=document.querySelectorAll(".ord-qty");const ordItems=[];sels.forEach((s,i)=>{const q=parseInt(qtys[i]?.value),opt=s.options[s.selectedIndex];if(q>0)ordItems.push({itemId:s.value,itemName:opt.dataset.name,qty:q,price:parseFloat(opt.dataset.price)||0,vendor:opt.dataset.vendor||""})});if(!ordItems.length){toast("請至少新增一個品項","error");return}showLoad("送出叫貨單...");try{const res=await POST({action:"submitOrder",items:ordItems,note:$("ord-note").value});hideLoad();if(res.ok){toast(`叫貨單 ${res.orderId} 已送出 ✓`,"success");loadAdmin();stab("order");}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+function renderOrdList(orders){
+  if(!orders?.length){$("ord-list").innerHTML="";return}
+  const grp={};
+  orders.forEach(o=>{if(!grp[o.orderId])grp[o.orderId]={orderId:o.orderId,time:o.time,note:o.note,lines:[]};grp[o.orderId].lines.push(o)});
+  let html=`<div style="font-size:13px;font-weight:600;color:var(--gr6);margin:12px 0 8px">叫貨紀錄</div>`;
+  Object.values(grp).forEach(g=>{
+    const pending=g.lines.filter(l=>l.status==="待處理");
+    const arrived=g.lines.filter(l=>l.status==="已到貨");
+    const allDone=pending.length===0;
+    const sc=allDone?"st-done":arrived.length>0?"st-transit":"st-pending";
+    const statusLabel=allDone?"全部到貨":arrived.length>0?`部分到貨（${arrived.length}/${g.lines.length}）`:"待處理";
+    let orderedTotal=0,receivedTotal=0;
+    html+=`<div class="formcard"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div><div style="font-size:14px;font-weight:600">${g.orderId}</div><div style="font-size:12px;color:var(--gr6)">${g.time}</div></div>
+      <span class="stbadge ${sc}">${statusLabel}</span></div>`;
+    // 已到貨品項
+    if(arrived.length){
+      html+=`<div style="font-size:12px;font-weight:600;color:var(--gd);margin-bottom:6px">✓ 已到貨</div>`;
+      arrived.forEach(l=>{
+        const lt=(l.price||0)*l.qty; orderedTotal+=lt;
+        const rt=Number(l.receivedSub)||0; receivedTotal+=rt;
+        html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--gr1);color:var(--gd)">
+          <span>${l.itemName} <span style="font-size:11px">叫${l.qty}→到${l.receivedQty||0}</span></span>
+          <span>$${rt.toLocaleString()}</span></div>`;
+      });
+    }
+    // 待處理品項
+    if(pending.length){
+      html+=`<div style="font-size:12px;font-weight:600;color:#795548;margin:8px 0 6px">⏳ 等待到貨</div>`;
+      pending.forEach(l=>{
+        const lt=(l.price||0)*l.qty; orderedTotal+=lt;
+        html+=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:6px 0;border-bottom:1px solid var(--gr1)">
+          <span>${l.itemName} ×${l.qty} <span style="color:var(--gr4);font-size:11px">${l.vendor||""}</span></span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="color:var(--gr6)">$${lt.toLocaleString()}</span>
+            <input type="number" min="0" step="0.1" value="${l.qty}" id="recv-${g.orderId}-${l.itemId}" style="width:52px;padding:4px;border:1.5px solid var(--gr2);border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--gl)">
+          </div></div>`;
+      });
+      html+=`<button class="sbtn green" style="margin-top:10px;padding:10px" onclick="receiveOrder('${g.orderId}',${JSON.stringify(pending.map(l=>l.itemId))})"><i class="ti ti-package-import"></i> 確認到貨入庫</button>`;
+    }
+    if(orderedTotal)html+=`<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--gr2)">
+      <span style="color:var(--gr6)">叫貨金額：$${orderedTotal.toLocaleString()}</span>
+      ${receivedTotal?`<span style="font-weight:600;color:var(--gd)">實到金額：$${receivedTotal.toLocaleString()}</span>`:""}
+    </div>`;
+    html+=`</div>`;
+  });
+  $("ord-list").innerHTML=html;
+}
+async function receiveOrder(orderId,itemIds){
+  const arrivals=[];
+  itemIds.forEach(id=>{
+    const el=$("recv-"+orderId+"-"+id);
+    if(el){const qty=parseFloat(el.value);if(qty>0)arrivals.push({itemId:id,receivedQty:qty});}
+  });
+  if(!arrivals.length){toast("請至少選一項到貨品項","error");return}
+  showLoad("入庫中...");
+  try{
+    const res=await POST({action:"updateOrder",orderId,arrivals});
+    hideLoad();
+    if(res.ok){toast(`${arrivals.length} 項已到貨入庫 ✓`,"success");loadAdmin();stab("order");}
+    else toast(res.error||"失敗","error");
+  }catch(e){hideLoad();toast("網路錯誤","error")}
+}
+
+// 入庫
+function renderIbRows(){$("ib-rows").innerHTML="";addIbRow()}
+function addIbRow(){const opts=items.map(i=>`<option value="${i.id}" data-name="${i.name}">${i.name}</option>`).join("");const d=document.createElement("div");d.className="fgrid2";d.innerHTML=`<div class="frow"><label>品項</label><select class="ib-item">${opts}</select></div><div class="frow"><label>數量</label><input type="number" min="0.1" step="0.1" class="ib-qty" placeholder="數量"></div>`;$("ib-rows").appendChild(d)}
+async function submitInbound(){const sels=document.querySelectorAll(".ib-item"),qtys=document.querySelectorAll(".ib-qty");const inbounds=[];sels.forEach((s,i)=>{const q=parseFloat(qtys[i]?.value);if(q>0)inbounds.push({itemId:s.value,itemName:s.options[s.selectedIndex].dataset.name,qty:q,vendor:$("ib-vendor").value,invoice:$("ib-invoice").value,note:""})});if(!inbounds.length){toast("請輸入入庫品項","error");return}showLoad("入庫中...");try{const res=await POST({action:"submitInbound",inbounds});hideLoad();if(res.ok){toast(`入庫完成，已加到總部 ✓`,"success");loadAdmin();stab("inbound");}else{console.error("入庫失敗:",res);toast(res.error||"入庫失敗，請確認已重跑 setupSheets","error")}}catch(e){hideLoad();console.error("入庫錯誤:",e);toast("網路錯誤："+e.message,"error")}}
+function renderIbList(inbounds){if(!inbounds?.length){$("ib-list").innerHTML="";return}let html=`<div style="font-size:13px;font-weight:600;color:var(--gr6);margin:12px 0 8px">入庫紀錄</div>`;inbounds.slice(0,20).forEach(ib=>{html+=`<div class="logcard"><div class="ldot hq">總</div><div><div class="lnm">${ib.itemName}</div><div class="lch">入庫 <strong>+${ib.qty}</strong>${ib.vendor?` ・ ${ib.vendor}`:""}</div><div class="lmeta"><span>${ib.time}</span></div></div></div>`});$("ib-list").innerHTML=html}
+
+// 新增商品
+async function addNewItem(){const name=$("ni-name").value.trim();if(!name){toast("請輸入品名","error");return}const body={action:"addItem",name,cat:$("ni-cat").value,vendor:$("ni-vendor").value,price:parseFloat($("ni-price").value)||0,moq:parseInt($("ni-moq").value)||0,safeHQ:parseInt($("ni-safehq").value)||0,safeAB:parseInt($("ni-safeab").value)||0};showLoad("新增商品...");try{const res=await POST(body);hideLoad();if(res.ok){toast(`已新增 ${res.newId} ✓`,"success");$("ni-name").value="";$("ni-price").value="";$("ni-moq").value="";$("ni-safehq").value="";$("ni-safeab").value="";loadAdmin();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 價格
+function renderPriceTable(its){let rows="";its.forEach(item=>{rows+=`<tr><td class="ntd"><div>${item.name}</div><div class="idtag">${item.id}</div></td><td style="font-size:15px;font-weight:600;color:#795548">${item.price?`$${Number(item.price).toFixed(2)}`:"未設定"}</td><td><input type="number" min="0" value="${item.price||""}" id="price-${item.id}" placeholder="含稅單價" step="0.01" style="width:80px;padding:6px;border:1.5px solid var(--gr2);border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--gr1);outline:none"></td></tr>`});$("price-tbody").innerHTML=rows}
+async function savePrice(){const ch=[];items.forEach(item=>{const v=parseFloat($("price-"+item.id)?.value);if(!isNaN(v)&&v!==item.price)ch.push({itemId:item.id,price:v})});if(!ch.length){toast("沒有變更");return}showLoad("儲存價格...");try{const res=await POST({action:"updatePrice",changes:ch});hideLoad();if(res.ok){toast(`已更新 ${ch.length} 項 ✓`,"success");loadAdmin();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 安全庫存
+function renderSafeTable(its){let rows="";its.forEach(item=>{rows+=`<tr><td class="ntd"><div>${item.name}</div><div class="idtag">${item.id}</div></td><td><input type="number" min="0" value="${item.safeHQ}" id="shq-${item.id}" style="width:60px;padding:6px;border:1.5px solid #4E342E;border-radius:var(--rsm);font-size:13px;text-align:center;background:#EFEBE9;outline:none"></td><td><input type="number" min="0" value="${item.safeAB}" id="sab-${item.id}" style="width:60px;padding:6px;border:1.5px solid #5C4033;border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--sand);outline:none"></td></tr>`});$("safe-tbody").innerHTML=rows}
+async function saveSafe(){const ch=[];items.forEach(item=>{const hq=parseInt($("shq-"+item.id)?.value),ab=parseInt($("sab-"+item.id)?.value);if((!isNaN(hq)&&hq!==item.safeHQ)||(!isNaN(ab)&&ab!==item.safeAB))ch.push({itemId:item.id,safeHQ:isNaN(hq)?item.safeHQ:hq,safeAB:isNaN(ab)?item.safeAB:ab})});if(!ch.length){toast("沒有變更");return}showLoad("儲存安全庫存...");try{const res=await POST({action:"updateSafeStock",changes:ch});hideLoad();if(res.ok){toast(`已更新 ${ch.length} 項 ✓ 即時生效`,"success");loadAdmin();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 送洗後台
+function renderLaundryAdmin(laundry){const grp={};laundry.forEach(l=>{if(!grp[l.laundryId])grp[l.laundryId]={...l,lines:[]};grp[l.laundryId].lines.push(l)});if(!Object.keys(grp).length){$("laundry-admin").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:40px 0">尚無送洗紀錄</p>`;return}let html="";Object.values(grp).forEach(g=>{const sc=g.status==="送洗中"?"st-transit":"st-done";html+=`<div class="formcard"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div><div style="font-size:14px;font-weight:600">${g.laundryId}</div><div style="font-size:12px;color:var(--gr6)">${g.time}・${g.hall}館</div></div><span class="stbadge ${sc}">${g.status}</span></div>`;g.lines.forEach(l=>{html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--gr1)"><span>${l.itemName}</span><span>送${l.qty}${l.returnQty?` / 回${l.returnQty}`:""}</span></div>`});if(g.status==="送洗中")html+=`<button class="sbtn red" style="margin-top:10px;padding:9px" onclick="delLaundry('${g.laundryId}')"><i class="ti ti-trash"></i> 刪除此記錄</button>`;html+=`</div>`});$("laundry-admin").innerHTML=html}
+async function delLaundry(laundryId){if(!confirm(`確定刪除 ${laundryId}？\n注意：庫存不會自動還原。`))return;showLoad("刪除中...");try{const res=await POST({action:"deleteLaundry",laundryId});hideLoad();if(res.ok){toast("已刪除 ✓","success");GET({action:"getLaundry"}).then(r=>{if(r.ok)renderLaundryAdmin(r.laundry)})}else toast("失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+
+// 報表
+function genReport(){const start=$("rp-start").value,end=$("rp-end").value;if(!start||!end){toast("請選擇起訖日期","error");return}const startF=start.replace(/-/g,"/"),endF=end.replace(/-/g,"/");showLoad("產生報表...");GET({action:"getReport",start:startF,end:endF}).then(res=>{hideLoad();if(!res.ok){toast("產生失敗","error");return}reportData=res;renderReport(res);});}
+function renderReport(res){
+  if(!res.report.length){$("rp-result").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:40px 0">此區間無叫貨資料</p>`;$("rp-download").style.display="none";return}
+  let orderedGrand=0;
+  let html=`<div style="font-size:13px;color:var(--gr6);margin-bottom:10px">${res.start} ~ ${res.end}　共 ${res.report.length} 家廠商</div>`;
+  res.report.forEach(v=>{
+    orderedGrand+=(v.orderedTotal||0);
+    html+=`<div class="report-vendor"><h4><span>${v.vendor}</span><span style="color:#795548">實到 $${v.subtotal.toLocaleString()}</span></h4>`;
+    v.items.forEach(it=>{
+      const stLabel=it.status==="已到貨"?"✓":"⏳";
+      html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--gr1)">
+        <span>${stLabel} ${it.time} ${it.itemName} <span style="font-size:11px;color:var(--gr4)">叫${it.orderedQty}→到${it.receivedQty||0}</span></span>
+        <span>$${(it.receivedSub||0).toLocaleString()}</span></div>`;
+    });
+    html+=`<div style="font-size:12px;color:var(--gr6);text-align:right;margin-top:6px">叫貨：$${(v.orderedTotal||0).toLocaleString()} ／ 實到：$${v.subtotal.toLocaleString()}</div></div>`;
+  });
+  html+=`<div class="formcard" style="text-align:center">
+    <div style="font-size:12px;color:var(--gr6)">叫貨總金額</div><div style="font-size:18px;color:var(--gr6)">$${orderedGrand.toLocaleString()}</div>
+    <div style="font-size:12px;color:var(--gr6);margin-top:8px">實到總金額（對帳用）</div><div style="font-size:24px;font-weight:700;color:#5C4033">$${res.total.toLocaleString()}</div>
+  </div>`;
+  $("rp-result").innerHTML=html;$("rp-download").style.display="flex";
+}
+function downloadReport(){
+  if(!reportData||!reportData.report.length){toast("沒有資料可下載","error");return}
+  const wb=XLSX.utils.book_new();
+  const aoa=[["廠商","日期","品項","叫貨數量","實到數量","含稅單價","叫貨金額","實到金額","狀態"]];
+  reportData.report.forEach(v=>{
+    v.items.forEach(it=>{
+      aoa.push([v.vendor,it.time,it.itemName,it.orderedQty,it.receivedQty||0,it.price,it.orderedSub,it.receivedSub||0,it.status]);
+    });
+    aoa.push(["",v.vendor+" 小計","","","","",v.orderedTotal||0,v.subtotal,""]);
+    aoa.push([]);
+  });
+  aoa.push(["","總計","","","","","",reportData.total,""]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:22},{wch:12},{wch:24},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12},{wch:8}];
+  XLSX.utils.book_append_sheet(wb,ws,"叫貨對帳");
+  const fn=`寬陽台叫貨對帳_${reportData.start.replace(/\//g,"")}-${reportData.end.replace(/\//g,"")}.xlsx`;
+  XLSX.writeFile(wb,fn);
+  toast("Excel 已下載 ✓","success");
+}
+
+// 紀錄
+function renderLogs(logs){if(!logs?.length){$("loglist").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:48px 0">尚無異動紀錄</p>`;return}let html="";logs.forEach(log=>{const dc=log.hall==="HQ"?"hq":log.hall==="A"?"a":"b",dl=log.hall==="HQ"?"總":log.hall;html+=`<div class="logcard"><div class="ldot ${dc}">${dl}</div><div style="flex:1;min-width:0"><div class="lnm">${log.itemName}</div><div class="lch"><strong>${log.prev}</strong> → <strong>${log.next}</strong></div><div class="lmeta"><span>${log.time}</span><span class="lbadge">${log.type}</span></div></div></div>`});$("loglist").innerHTML=html}
+
+// 警示
+function renderAlertTab(its){const hqA=its.filter(x=>x.hq<=x.safeHQ),aA=its.filter(x=>x.a<=x.safeAB),bA=its.filter(x=>x.b<=x.safeAB);const total=new Set([...hqA,...aA,...bA].map(x=>x.id)).size;if(!total){$("alertlist").innerHTML=`<div style="text-align:center;padding:60px 20px"><i class="ti ti-circle-check" style="font-size:48px;color:var(--gd)"></i><p style="margin-top:12px;font-size:15px;font-weight:600;color:var(--gd)">所有庫存正常</p></div>`;return}function sec(title,key,safeKey,list,dc,dl){if(!list.length)return`<div style="background:var(--gl);border-radius:var(--rmd);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px"><i class="ti ti-circle-check" style="color:var(--gd);font-size:20px"></i><span style="font-size:14px;font-weight:500;color:var(--gd)">${title}：正常</span></div>`;let h=`<div style="margin-bottom:20px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div class="ldot ${dc}" style="width:28px;height:28px;font-size:11px">${dl}</div><span style="font-size:14px;font-weight:600">${title}</span><span style="font-size:12px;color:var(--wd);margin-left:auto"><i class="ti ti-alert-triangle"></i> ${list.length} 項</span></div>`;list.forEach(item=>{const qty=item[key],safe=item[safeKey],isZ=qty===0;h+=`<div class="icard ${isZ?"zero":"low"}" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center"><div><div class="icnm" style="font-size:14px">${item.name}</div><div class="icid">${item.id}</div></div><div class="${isZ?"pill-zero":"pill-low"} apill" style="padding:6px 12px;min-width:80px;text-align:right"><div class="apl"><i class="ti ${isZ?"ti-alert-octagon":"ti-alert-triangle"}"></i> ${isZ?"緊急":"需補貨"}</div>剩 ${qty} / 安全 ${safe}</div></div></div>`});return h+"</div>"}$("alertlist").innerHTML=`<div style="font-size:13px;color:var(--gr6);margin-bottom:14px">各館獨立庫存警示</div>`+sec("總部倉儲","hq","safeHQ",hqA,"hq","總")+sec("A館・宜蘭市","a","safeAB",aA,"a","A")+sec("B館・壯圍鄉","b","safeAB",bA,"b","B")}
+
+const TABS=["inventory","transfer","requests","order","inbound","additem","price","safe","laundry","report","log","alert"];
+function stab(tab){document.querySelectorAll(".tabbt").forEach((b,i)=>{const on=TABS[i]===tab;b.classList.toggle("active",on);if(on)b.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});});document.querySelectorAll(".tabc").forEach((c,i)=>c.classList.toggle("active","tab-"+TABS[i]==="tab-"+tab));if(tab==="requests")GET({action:"getRequests"}).then(r=>{if(r.ok)renderRequests(r.requests)});if(tab==="order")GET({action:"getOrders"}).then(r=>{if(r.ok)renderOrdList(r.orders)});if(tab==="log")GET({action:"getLogs"}).then(r=>{if(r.ok)renderLogs(r.logs)});if(tab==="laundry")GET({action:"getLaundry"}).then(r=>{if(r.ok)renderLaundryAdmin(r.laundry)});if(tab==="transfer")GET({action:"getTransfers"}).then(r=>{if(r.ok)renderTrList(r.transfers)});if(tab==="inbound")GET({action:"getInbounds"}).then(r=>{if(r.ok)renderIbList(r.inbounds)})}
+</script>
 </body>
 </html>
