@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>寬陽台盤點系統</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --gd:#5C4033;--g:#6D4C41;--gl:#EFEBE9;
+  --bd:#4E342E;--bl:#D7CCC8;
+  --rd:#B71C1C;--rl:#FFEBEE;
+  --wd:#8D6E63;--wl:#EFEBE9;
+  --gold:#A1887F;--goldl:#F5F0EE;
+  --hqd:#4E342E;--hql:#EFEBE9;
+  --gr1:#FAF8F6;--gr2:#EDE7E3;--gr4:#BCAAA4;--gr6:#8D6E63;
+  --text:#3E2723;--sur:#fff;
+  --sand:#F5EFE6;--clay:#C8A882;
+  --rsm:8px;--rmd:12px;--rlg:16px;
+}
+html,body{height:100%;font-family:'PingFang TC','Noto Sans TC',-apple-system,sans-serif;color:var(--text);background:var(--gr1)}
+input,button,select,textarea{font-family:inherit}
+.app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--gr1)}
+.screen{display:none;min-height:100vh;flex-direction:column}
+.screen.active{display:flex}
+.topbar{color:#fff;padding:0 16px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;flex-shrink:0}
+.topbar.green{background:#5C4033}.topbar.blue{background:#4E342E}.topbar.purple{background:#4E342E}.topbar.orange{background:#795548}
+.tb-title{font-size:16px;font-weight:600;flex:1}
+.back-btn{width:36px;height:36px;background:rgba(255,255,255,.15);border:none;border-radius:var(--rsm);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.hbadge{font-size:12px;font-weight:500;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.2);flex-shrink:0}
+.scroll{flex:1;overflow-y:auto;padding:16px;padding-bottom:100px}
+#sl{background:var(--sur)}
+.lhero{padding:48px 24px 32px;text-align:center;background:#F5EDE0}
+.licon{width:80px;height:80px;background:rgba(92,64,51,.1);border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;border:2px solid rgba(92,64,51,.2)}
+.lhero h1{font-size:22px;font-weight:700;color:#3E2723;margin-bottom:6px}
+.lhero p{font-size:14px;color:#8D6E63}
+.lbody{padding:24px 20px}
+.rgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.rcard{background:var(--sur);border:1.5px solid var(--gr2);border-radius:var(--rlg);padding:20px 12px;text-align:center;cursor:pointer;transition:all .15s}
+.rcard:hover,.rcard.sel{border-color:var(--gd);background:var(--gl)}
+.rci{font-size:32px;margin-bottom:10px}.rct{font-size:15px;font-weight:600;margin-bottom:3px}.rcs{font-size:12px;color:var(--gr6)}
+.pinarea{background:var(--sur);border:1px solid var(--gr2);border-radius:var(--rlg);padding:20px;margin-top:4px}
+.pinarea label{font-size:13px;color:var(--gr6);font-weight:500;display:block;margin-bottom:10px}
+.pinrow{display:flex;gap:10px}
+.pinrow input{flex:1;padding:14px 12px;font-size:20px;text-align:center;letter-spacing:8px;border:1.5px solid var(--gr2);border-radius:var(--rmd);background:var(--gr1);outline:none}
+.pinrow input:focus{border-color:var(--gd);background:#fff}
+.pinsub{padding:14px 20px;background:#5C4033;color:#fff;border:none;border-radius:var(--rmd);font-size:15px;font-weight:600;cursor:pointer}
+.pinerr{color:var(--rd);font-size:12px;margin-top:8px;display:none}
+.hint{font-size:11px;color:var(--gr4);text-align:center;margin-top:16px}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+.hhq-wrap{margin-top:14px;padding-bottom:20px}
+.hbtn{background:var(--sur);border:1.5px solid var(--gr2);border-radius:var(--rlg);padding:24px 16px 20px;text-align:center;cursor:pointer;transition:all .15s}
+.hbtn:active{transform:scale(.97)}
+.hbtn.ha:hover{border-color:#5C4033;background:var(--gl)}.hbtn.hb:hover{border-color:var(--clay);background:var(--sand)}.hbtn.hhq:hover{border-color:#4E342E;background:var(--gl)}
+.hbico{font-size:36px;margin-bottom:10px;display:block}.hbnm{font-size:18px;font-weight:700;margin-bottom:4px}.hbad{font-size:12px;color:var(--gr6)}
+.catlabel{font-size:11px;font-weight:700;color:var(--gr6);letter-spacing:1px;padding:18px 0 8px;display:flex;align-items:center;gap:6px}
+.catlabel::after{content:'';flex:1;height:1px;background:var(--gr2)}
+.icard{background:var(--sur);border:1px solid var(--gr2);border-radius:var(--rlg);padding:14px 16px;margin-bottom:10px;position:relative}
+.icard.low{border-left:4px solid var(--wd)}.icard.zero{border-left:4px solid var(--rd)}
+.icard.checked::after{content:'✓';position:absolute;top:10px;right:12px;font-size:18px;color:var(--gd);font-weight:700}
+.ictop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.icnm{font-size:16px;font-weight:600}.icid{font-size:11px;color:var(--gr4);font-family:monospace;margin-top:2px}
+.icqn{font-size:24px;font-weight:700;line-height:1}.icqn.ok{color:var(--gd)}.icqn.low{color:var(--wd)}.icqn.zero{color:var(--rd)}
+.icql{font-size:11px;color:var(--gr6);margin-top:2px;text-align:right}
+.icsafe{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--gr1);border-radius:var(--rsm);margin-bottom:10px;font-size:13px}
+.wtag{margin-left:auto;font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px}
+.wtag.low{background:var(--wl);color:var(--wd)}.wtag.zero{background:var(--rl);color:var(--rd)}
+.icinp{display:flex;gap:10px}
+.icinp input{flex:1;padding:12px;font-size:18px;text-align:center;border:1.5px solid var(--gr2);border-radius:var(--rmd);outline:none;background:var(--gr1)}
+.icinp input:focus{border-color:var(--gd);background:#fff}
+.iupdbtn{padding:12px 18px;color:#fff;border:none;border-radius:var(--rmd);font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.iupdbtn.green{background:#5C4033}.iupdbtn.purple{background:#4E342E}.iupdbtn.loading{background:var(--gr4);pointer-events:none}
+.cbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--sur);border-top:1px solid var(--gr2);padding:10px 16px;z-index:200;display:flex;gap:10px;align-items:center}
+.cbar-prog{flex:1;font-size:13px;color:var(--gr6)}.cbar-prog strong{color:var(--gd)}
+.cbtn{padding:12px 20px;background:#5C4033;color:#fff;border:none;border-radius:var(--rmd);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.cbtn:disabled{background:var(--gr4)}
+.tabs{display:flex;background:var(--sur);border-bottom:1px solid var(--gr2);position:sticky;top:56px;z-index:50;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}.tabs::after{content:'';flex:0 0 16px}
+.tabs::-webkit-scrollbar{display:none}
+.tabbt{flex:0 0 auto;padding:12px 13px;background:transparent;border:none;font-size:13px;font-weight:500;color:var(--gr6);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tabbt.active{color:#5C4033;border-bottom-color:#5C4033}
+.tabc{display:none}.tabc.active{display:block}
+.infob{border-radius:var(--rmd);padding:10px 14px;font-size:12px;margin-bottom:12px;display:flex;align-items:flex-start;gap:8px}
+.infob.blue{background:#D7CCC8;color:#3E2723}.infob.green{background:var(--gl);color:#5C4033}.infob.orange{background:var(--sand);color:#5C4033}
+.tw{overflow-x:auto;border-radius:var(--rmd);border:1px solid var(--gr2);background:var(--sur)}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{padding:9px 6px;font-size:11px;font-weight:700;color:#fff;background:#5C4033;text-align:center;white-space:nowrap}
+table.t th:first-child{text-align:left;padding-left:10px}
+table.t td{padding:8px 5px;text-align:center;border-bottom:1px solid var(--gr1);vertical-align:middle}
+table.t td.ntd{text-align:left;padding-left:10px}
+table.t td.danger{background:var(--rl);color:var(--rd);font-weight:700}
+table.t td.warnc{background:var(--wl);color:var(--wd);font-weight:600}
+table.t input[type=number]{width:52px;padding:5px 3px;font-size:13px;text-align:center;border:1.5px solid var(--gr2);border-radius:var(--rsm);background:var(--gr1);outline:none}
+table.t input[type=number]:focus{border-color:var(--gd);background:#fff}
+table.t tr:last-child td{border-bottom:none}
+.idtag{font-size:10px;color:var(--gr4);font-family:monospace}
+.searchbar{display:flex;gap:8px;margin-bottom:12px}
+.searchbar input{flex:1;padding:10px 14px;border:1.5px solid var(--gr2);border-radius:var(--rmd);font-size:14px;background:var(--sur);outline:none}
+.searchbar input:focus{border-color:#5C4033}
+.searchbar select{padding:10px;border:1.5px solid var(--gr2);border-radius:var(--rmd);font-size:13px;background:var(--sur);outline:none}
+.savebar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--sur);border-top:1px solid var(--gr2);padding:12px 16px;z-index:200;display:none}
+.tabc.active .savebar{display:block}
+.savebar button{width:100%;padding:14px;background:#5C4033;color:#fff;border:none;border-radius:var(--rmd);font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.logcard{background:var(--sur);border:1px solid var(--gr2);border-radius:var(--rmd);padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start}
+.ldot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.ldot.hq{background:#EFEBE9;color:#4E342E}.ldot.a{background:#D7CCC8;color:#4E342E}.ldot.b{background:var(--sand);color:#5C4033}
+.lnm{font-size:14px;font-weight:600;margin-bottom:3px}.lch{font-size:13px;color:var(--gr6)}
+.lmeta{font-size:11px;color:var(--gr4);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
+.lbadge{font-size:10px;padding:2px 7px;border-radius:8px;background:var(--gl);color:var(--gd)}
+.formcard{background:var(--sur);border:1px solid var(--gr2);border-radius:var(--rlg);padding:16px;margin-bottom:12px}
+.formcard h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.frow{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.frow label{font-size:12px;color:var(--gr6);font-weight:500}
+.frow input,.frow select,.frow textarea{padding:10px 12px;border:1.5px solid var(--gr2);border-radius:var(--rmd);font-size:14px;background:var(--gr1);outline:none;width:100%}
+.frow input:focus,.frow select:focus,.frow textarea:focus{border-color:#5C4033;background:#fff}
+.frow textarea{min-height:56px;resize:vertical}
+.fgrid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.sbtn{padding:13px;border:none;border-radius:var(--rmd);font-size:14px;font-weight:600;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px}
+.sbtn.green{background:#5C4033;color:#fff}.sbtn.blue{background:#4E342E;color:#fff}.sbtn.purple{background:#4E342E;color:#fff}.sbtn.orange{background:#795548;color:#fff}.sbtn.red{background:var(--rd);color:#fff}
+.sbtn:active{opacity:.8}
+.stbadge{font-size:11px;padding:3px 8px;border-radius:10px;font-weight:600}
+.st-pending{background:var(--sand);color:#795548}.st-done{background:var(--gl);color:var(--gd)}.st-transit{background:#EFEBE9;color:#4E342E}
+.apill{border-radius:var(--rsm);padding:7px 4px;text-align:center;font-weight:700;font-size:13px}
+.apill .apl{font-size:10px;font-weight:400;margin-bottom:2px}
+.pill-ok{background:var(--gl);color:var(--gd)}.pill-low{background:var(--wl);color:var(--wd)}.pill-zero{background:var(--rl);color:var(--rd)}
+.price-tag{font-size:11px;color:#5C4033;background:var(--gl);padding:2px 7px;border-radius:8px;font-weight:600}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#3E2723;color:#fff;padding:12px 24px;border-radius:24px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;z-index:1000;white-space:nowrap;transition:opacity .25s,bottom .25s;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:90%;text-align:center}
+.toast.show{opacity:1;bottom:88px}.toast.success{background:#5C4033}.toast.error{background:var(--rd)}
+.lov{position:fixed;inset:0;background:rgba(255,255,255,.88);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:500;gap:16px}
+.lov.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid var(--gr2);border-top-color:#5C4033;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lov p{font-size:14px;color:var(--gr6)}
+.report-vendor{background:var(--sur);border:1px solid var(--gr2);border-radius:var(--rlg);padding:14px 16px;margin-bottom:10px}
+.report-vendor h4{font-size:15px;font-weight:600;color:#5C4033;margin-bottom:8px;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="lov" id="lov"><div class="spinner"></div><p id="lmsg">載入中...</p></div>
+<div class="toast" id="toast"></div>
+
+<!-- 登入 -->
+<div id="sl" class="screen active">
+  <div class="lhero">
+    <div class="licon"><i class="ti ti-building" style="font-size:36px;color:#5C4033"></i></div>
+    <h1>寬陽台盤點系統</h1><p>請選擇登入身份</p>
+  </div>
+  <div class="lbody">
+    <div class="rgrid">
+      <div class="rcard" id="rc-staff" onclick="selRole('staff')">
+        <div class="rci"><i class="ti ti-clipboard-list" style="color:#5C4033"></i></div>
+        <div class="rct">同仁盤點</div><div class="rcs">總部/A館/B館</div>
+      </div>
+      <div class="rcard" id="rc-admin" onclick="selRole('admin')">
+        <div class="rci"><i class="ti ti-shield-check" style="color:#4E342E"></i></div>
+        <div class="rct">管理後台</div><div class="rcs">總部管理員</div>
+      </div>
+    </div>
+    <div class="pinarea" id="pinarea" style="display:none">
+      <label id="pinlabel">輸入通行碼</label>
+      <div class="pinrow">
+        <input type="password" id="pininput" maxlength="12" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()">
+        <button class="pinsub" onclick="doLogin()">進入</button>
+      </div>
+      <p class="pinerr" id="pinerr">密碼錯誤</p>
+    </div>
+    <p class="hint">※ 如需帳號密碼請洽總部</p>
+  </div>
+</div>
+
+<!-- 選館 -->
+<div id="sh" class="screen">
+  <div class="topbar green">
+    <button class="back-btn" onclick="go('sl')"><i class="ti ti-arrow-left"></i></button>
+    <span class="tb-title">選擇盤點館別</span>
+  </div>
+  <div class="scroll">
+    <p style="font-size:14px;color:var(--gr6);padding-top:8px">請選擇您目前所在的館別</p>
+    <div class="hgrid">
+      <div class="hbtn ha" onclick="enterHall('A')"><span class="hbico"><i class="ti ti-building-estate" style="color:#5C4033"></i></span><div class="hbnm">A 館</div><div class="hbad">宜蘭市・和睦路</div></div>
+      <div class="hbtn hb" onclick="enterHall('B')"><span class="hbico"><i class="ti ti-home-2" style="color:#795548"></i></span><div class="hbnm">B 館</div><div class="hbad">壯圍鄉・大福路</div></div>
+    </div>
+    <div class="hhq-wrap"><div class="hbtn hhq" onclick="enterHall('HQ')" style="padding:20px 16px"><span class="hbico" style="font-size:28px"><i class="ti ti-building-bank" style="color:#4E342E"></i></span><div class="hbnm">總 部</div><div class="hbad">倉儲區</div></div></div>
+  </div>
+</div>
+
+<!-- 盤點清單 -->
+<div id="ss" class="screen">
+  <div class="topbar green" id="stb">
+    <button class="back-btn" onclick="go('sh')"><i class="ti ti-arrow-left"></i></button>
+    <span class="tb-title" id="stitle">盤點清單</span><span class="hbadge" id="sbadge"></span>
+  </div>
+  <div class="scroll" id="scontent" style="padding-bottom:80px"></div>
+  <div class="cbar">
+    <div class="cbar-prog">已盤點 <strong id="chk-cnt">0</strong> / <span id="tot-cnt">0</span> 項</div>
+    <button class="cbtn" id="confirmbtn" onclick="confirmAll()" disabled>完成盤點</button>
+  </div>
+</div>
+
+<!-- 內部需求單（A/B館同仁）-->
+<div id="srequest" class="screen">
+  <div class="topbar orange">
+    <button class="back-btn" onclick="go('sh')"><i class="ti ti-arrow-left"></i></button>
+    <span class="tb-title">內部需求單</span><span class="hbadge" id="reqbadge"></span>
+  </div>
+  <div class="scroll" id="reqcontent"></div>
+</div>
+
+<!-- 送洗管理（同仁）-->
+<div id="slaundry" class="screen">
+  <div class="topbar purple">
+    <button class="back-btn" onclick="go('sh')"><i class="ti ti-arrow-left"></i></button>
+    <span class="tb-title">送洗管理</span><span class="hbadge" id="laundrybadge"></span>
+  </div>
+  <div class="scroll" id="laundrycontent"></div>
+</div>
+
+<!-- 管理後台 -->
+<div id="sa" class="screen">
+  <div class="topbar blue">
+    <button class="back-btn" onclick="go('sl')"><i class="ti ti-arrow-left"></i></button>
+    <span class="tb-title">管理後台</span><span class="hbadge">總部</span>
+  </div>
+  <div class="tabs">
+    <button class="tabbt active" onclick="stab('inventory')"><i class="ti ti-table"></i> 庫存</button>
+    <button class="tabbt" onclick="stab('transfer')"><i class="ti ti-transfer"></i> 調撥</button>
+    <button class="tabbt" onclick="stab('requests')"><i class="ti ti-inbox"></i> 需求單</button>
+    <button class="tabbt" onclick="stab('order')"><i class="ti ti-truck"></i> 叫貨</button>
+    <button class="tabbt" onclick="stab('inbound')"><i class="ti ti-package-import"></i> 入庫</button>
+    <button class="tabbt" onclick="stab('additem')"><i class="ti ti-plus"></i> 新增商品</button>
+    <button class="tabbt" onclick="stab('price')"><i class="ti ti-coin"></i> 價格</button>
+    <button class="tabbt" onclick="stab('safe')"><i class="ti ti-shield"></i> 安全庫存</button>
+    <button class="tabbt" onclick="stab('laundry')"><i class="ti ti-wash"></i> 送洗</button>
+    <button class="tabbt" onclick="stab('report')"><i class="ti ti-file-spreadsheet"></i> 報表</button>
+    <button class="tabbt" onclick="stab('log')"><i class="ti ti-list-details"></i> 紀錄</button>
+    <button class="tabbt" onclick="stab('alert')"><i class="ti ti-bell"></i> 警示</button>
+  </div>
+
+  <div class="tabc active" id="tab-inventory">
+    <div class="scroll" style="padding-bottom:80px">
+      <div class="infob blue"><i class="ti ti-info-circle"></i> 紅=歸零 橘=低於安全庫存 可直接點數字編輯</div>
+      <div class="searchbar"><input type="text" id="inv-search" placeholder="搜尋品名..." oninput="filterTable()"><select id="inv-cat" onchange="filterTable()"><option value="">全部</option></select></div>
+      <div class="tw"><table class="t"><thead><tr><th style="min-width:100px">品名</th><th>總部</th><th>A館</th><th>B館</th><th style="font-size:10px">更新</th></tr></thead><tbody id="inv-tbody"></tbody></table></div>
+    </div>
+    <div class="savebar"><button onclick="saveAdmin()"><i class="ti ti-device-floppy"></i> 儲存庫存變更</button></div>
+  </div>
+
+  <div class="tabc" id="tab-transfer">
+    <div class="scroll">
+      <div class="formcard">
+        <h3><i class="ti ti-transfer" style="color:#5C4033"></i> 庫存調撥（總部 → 各館）</h3>
+        <div class="infob green" style="margin-bottom:12px"><i class="ti ti-info-circle"></i> 撥出後總部自動扣除、目標館自動增加</div>
+        <div class="frow"><label>撥往館別</label><select id="tr-hall"><option value="A">A館</option><option value="B">B館</option></select></div>
+        <div id="tr-rows"></div>
+        <button class="sbtn green" onclick="addTrRow()"><i class="ti ti-plus"></i> 新增品項</button>
+        <div class="frow"><label>備注</label><input type="text" id="tr-note" placeholder="選填"></div>
+        <button class="sbtn green" onclick="submitTransfer()"><i class="ti ti-check"></i> 確認調撥</button>
+      </div>
+      <div id="tr-list"></div>
+    </div>
+  </div>
+
+  <div class="tabc" id="tab-requests"><div class="scroll"><div id="req-content"></div></div></div>
+
+  <div class="tabc" id="tab-order">
+    <div class="scroll">
+      <div class="formcard">
+        <h3><i class="ti ti-truck" style="color:#795548"></i> 對廠商叫貨</h3>
+        <div id="ord-rows"></div>
+        <button class="sbtn orange" onclick="addOrdRow()"><i class="ti ti-plus"></i> 新增品項</button>
+        <div id="ord-total" style="font-size:14px;font-weight:600;color:#795548;text-align:right;margin-bottom:10px"></div>
+        <div class="frow"><label>備注</label><input type="text" id="ord-note" placeholder="選填"></div>
+        <button class="sbtn orange" onclick="submitOrder()"><i class="ti ti-send"></i> 送出叫貨單</button>
+      </div>
+      <div id="ord-list"></div>
+    </div>
+  </div>
+
+  <div class="tabc" id="tab-inbound">
+    <div class="scroll">
+      <div class="formcard">
+        <h3><i class="ti ti-package-import" style="color:#4E342E"></i> 新增入庫（加到總部）</h3>
+        <div id="ib-rows"></div>
+        <button class="sbtn blue" onclick="addIbRow()"><i class="ti ti-plus"></i> 新增品項</button>
+        <div class="frow"><label>廠商名稱</label><input type="text" id="ib-vendor" placeholder="例：隆潁企業有限公司"></div>
+        <div class="frow"><label>批號/發票號（選填）</label><input type="text" id="ib-invoice"></div>
+        <button class="sbtn blue" onclick="submitInbound()"><i class="ti ti-check"></i> 確認入庫</button>
+      </div>
+      <div id="ib-list"></div>
+    </div>
+  </div>
+
+  <div class="tabc" id="tab-additem">
+    <div class="scroll">
+      <div class="formcard">
+        <h3><i class="ti ti-plus" style="color:#5C4033"></i> 新增商品</h3>
+        <div class="infob green"><i class="ti ti-info-circle"></i> 物品編號將依分類自動產生</div>
+        <div class="frow"><label>品名 *</label><input type="text" id="ni-name" placeholder="例：洗髮精 360ml"></div>
+        <div class="frow"><label>分類 *</label><select id="ni-cat"><option value="衛浴備品">衛浴備品</option><option value="清潔用品">清潔用品</option><option value="布巾寢具">布巾寢具</option></select></div>
+        <div class="frow"><label>廠商</label><select id="ni-vendor"></select></div>
+        <div class="frow"><label>含稅單價</label><input type="number" min="0" step="0.01" id="ni-price" placeholder="0.00"></div>
+        <div class="frow"><label>最低叫貨量</label><input type="number" min="0" id="ni-moq" placeholder="0"></div>
+        <div class="fgrid2">
+          <div class="frow"><label>總部安全庫存</label><input type="number" min="0" id="ni-safehq" placeholder="0"></div>
+          <div class="frow"><label>AB館安全庫存</label><input type="number" min="0" id="ni-safeab" placeholder="0"></div>
+        </div>
+        <button class="sbtn green" onclick="addNewItem()"><i class="ti ti-check"></i> 新增商品</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabc" id="tab-price">
+    <div class="scroll" style="padding-bottom:80px">
+      <div class="infob orange"><i class="ti ti-coin"></i> 設定各品項含稅單價，叫貨與報表會自動計算金額</div>
+      <div class="tw"><table class="t"><thead><tr><th style="min-width:130px">品名</th><th>目前單價</th><th>調整為</th></tr></thead><tbody id="price-tbody"></tbody></table></div>
+    </div>
+    <div class="savebar"><button onclick="savePrice()"><i class="ti ti-coin"></i> 儲存價格</button></div>
+  </div>
+
+  <div class="tabc" id="tab-safe">
+    <div class="scroll" style="padding-bottom:80px">
+      <div class="infob green"><i class="ti ti-shield"></i> 總部與AB館安全庫存各自獨立</div>
+      <div class="tw"><table class="t"><thead><tr><th style="min-width:110px">品名</th><th>總部安全</th><th>AB館安全</th></tr></thead><tbody id="safe-tbody"></tbody></table></div>
+    </div>
+    <div class="savebar"><button onclick="saveSafe()"><i class="ti ti-shield-check"></i> 儲存安全庫存</button></div>
+  </div>
+
+  <div class="tabc" id="tab-laundry"><div class="scroll"><div id="laundry-admin"></div></div></div>
+
+  <div class="tabc" id="tab-report">
+    <div class="scroll">
+      <div class="formcard">
+        <h3><i class="ti ti-file-spreadsheet" style="color:#5C4033"></i> 叫貨對帳報表</h3>
+        <div class="infob green"><i class="ti ti-info-circle"></i> 選擇日期區間，依廠商統計叫貨金額，可下載 Excel</div>
+        <div class="fgrid2">
+          <div class="frow"><label>起始日期</label><input type="date" id="rp-start"></div>
+          <div class="frow"><label>結束日期</label><input type="date" id="rp-end"></div>
+        </div>
+        <button class="sbtn green" onclick="genReport()"><i class="ti ti-search"></i> 產生報表</button>
+        <button class="sbtn blue" onclick="downloadReport()" id="rp-download" style="display:none"><i class="ti ti-download"></i> 下載 Excel</button>
+      </div>
+      <div id="rp-result"></div>
+    </div>
+  </div>
+
+  <div class="tabc" id="tab-log"><div class="scroll"><div id="loglist"></div></div></div>
+  <div class="tabc" id="tab-alert"><div class="scroll"><div id="alertlist"></div></div></div>
+</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
