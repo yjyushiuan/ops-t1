@@ -534,7 +534,7 @@ function renderOrdList(orders){
             <input type="number" min="0" step="0.1" value="${l.qty}" id="recv-${g.orderId}-${l.itemId}" style="width:52px;padding:4px;border:1.5px solid var(--gr2);border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--gl)">
           </div></div>`;
       });
-      html+=`<button class="sbtn green" style="margin-top:10px;padding:10px" onclick="receiveOrder('${g.orderId}',${JSON.stringify(pending.map(l=>l.itemId))})"><i class="ti ti-package-import"></i> 確認到貨入庫</button>`;
+      html+=`<button class="sbtn green" style="margin-top:10px;padding:10px" id="rcv-${g.orderId}" data-ids="${pending.map(l=>l.itemId).join(',')}" onclick="receiveOrder('${g.orderId}')"><i class="ti ti-package-import"></i> 確認到貨入庫</button>`;
     }
     if(orderedTotal)html+=`<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--gr2)">
       <span style="color:var(--gr6)">叫貨金額：$${orderedTotal.toLocaleString()}</span>
@@ -544,7 +544,9 @@ function renderOrdList(orders){
   });
   $("ord-list").innerHTML=html;
 }
-async function receiveOrder(orderId,itemIds){
+async function receiveOrder(orderId){
+  const btn=document.getElementById("rcv-"+orderId);
+  const itemIds=btn?btn.dataset.ids.split(",").filter(x=>x):[]; 
   const arrivals=[];
   itemIds.forEach(id=>{
     const el=$("recv-"+orderId+"-"+id);
