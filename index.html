@@ -594,9 +594,9 @@ function renderLaundryAdmin(laundry){
   laundry.forEach(l=>{
     if(!grp[l.laundryId])grp[l.laundryId]={laundryId:l.laundryId,time:l.time,hall:l.hall,status:l.status,note:l.note,lines:[]};
     grp[l.laundryId].lines.push(l);
-    // 取最差狀態作為整批狀態
+    // 取最早/最差狀態（數字最小的）作為整批顯示狀態
     const order={"待收走":0,"送洗中":1,"部分取回":2,"已取回":3};
-    if((order[l.status]||0)<(order[grp[l.laundryId].status]||0))grp[l.laundryId].status=l.status;
+    if((order[l.status]??99)<(order[grp[l.laundryId].status]??99))grp[l.laundryId].status=l.status;
   });
   if(!Object.keys(grp).length){$("laundry-admin").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:40px 0">尚無送洗紀錄</p>`;return}
   let html="";
