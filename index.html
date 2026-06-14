@@ -451,14 +451,23 @@ function renderLaundryStaff(laundry){
     <button class="sbtn purple" onclick="addLndRow()"><i class="ti ti-plus"></i> 新增品項</button>
     <div class="frow" style="margin-top:8px"><label>備注</label><input type="text" id="lnd-note" placeholder="例：送連美洗衣"></div>
     <button class="sbtn purple" onclick="submitLaundry()"><i class="ti ti-send"></i> 確認送洗出庫</button></div>`;
-  Object.values(grp).forEach(g=>{html+=`<div class="formcard"><h3><i class="ti ti-clock" style="color:#4E342E"></i> 送洗中 <span style="font-size:12px;color:var(--gr6)">${g.id}</span></h3>`;
-    g.items.forEach(l=>{html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px"><span>${l.itemName}</span><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--gr6)">送 ${l.qty}・回：</span><input type="number" min="0" value="${l.qty}" id="ret-${l.laundryId}-${l.itemId}" style="width:56px;padding:5px;border:1.5px solid var(--gr2);border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--gr1);outline:none"></div></div>`});
-    html+=`<button class="sbtn green" onclick="returnLaundry('${g.id}',${JSON.stringify(g.items.map(i=>i.itemId))})"><i class="ti ti-check"></i> 確認取回</button></div>`});
+  const statusColor={"待收走":"#795548","送洗中":"#4E342E","部分取回":"#795548","已取回":"var(--gd)"};
+  Object.values(grp).forEach(g=>{
+    const sc=g.status==="已取回"?"st-done":g.status==="部分取回"?"st-transit":g.status==="送洗中"?"st-transit":"st-pending";
+    html+=`<div class="formcard"><h3><i class="ti ti-clock" style="color:#4E342E"></i> <span style="font-size:12px">${g.id}</span> <span class="stbadge ${sc}" style="margin-left:auto">${g.status}</span></h3>`;
+    g.items.forEach(l=>{
+      const returned=Number(l.returnQty)||0;
+      html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--gr1)">
+        <span>${l.itemName}</span>
+        <span style="color:var(--gr6)">送 ${l.qty} 件${returned>0?" / 回 "+returned+" 件":""}</span></div>`;
+    });
+    html+=`<div style="font-size:11px;color:var(--gr4);margin-top:8px">取回請至管理後台操作</div></div>`;
+  });
   $("laundrycontent").innerHTML=html;addLndRow();
 }
 function addLndRow(){const lnItems=items.filter(x=>x.cat==="布巾寢具");const opts=lnItems.map(i=>`<option value="${i.id}" data-name="${i.name}">${i.name}</option>`).join("");const d=document.createElement("div");d.className="fgrid2";d.innerHTML=`<div class="frow"><label>品項</label><select class="lnd-item">${opts}</select></div><div class="frow"><label>件數</label><input type="number" min="1" class="lnd-qty" placeholder="件數"></div>`;$("lnd-rows").appendChild(d)}
 async function submitLaundry(){const sels=document.querySelectorAll(".lnd-item"),qtys=document.querySelectorAll(".lnd-qty");const lndItems=[];sels.forEach((s,i)=>{const q=parseInt(qtys[i]?.value);if(q>0)lndItems.push({itemId:s.value,itemName:s.options[s.selectedIndex].dataset.name,qty:q})});if(!lndItems.length){toast("請至少新增一個品項","error");return}showLoad("記錄送洗...");try{const res=await POST({action:"submitLaundry",hall,items:lndItems,note:$("lnd-note")?.value||""});hideLoad();if(res.ok){toast(`送洗記錄已建立 ✓`,"success");goLaundry();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
-async function returnLaundry(laundryId,itemIds){const returnQty={};itemIds.forEach(id=>{const el=$(`ret-${laundryId}-${id}`);if(el)returnQty[id]=parseInt(el.value)||0});showLoad("確認取回...");try{const res=await POST({action:"updateLaundry",laundryId,returnQty});hideLoad();if(res.ok){toast("取回已確認 ✓","success");goLaundry();}else toast("失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
+// returnLaundry moved to admin backend
 
 // ════ 管理後台 ════
 async function loadAdmin(){
@@ -580,7 +589,77 @@ function renderSafeTable(its){let rows="";its.forEach(item=>{rows+=`<tr><td clas
 async function saveSafe(){const ch=[];items.forEach(item=>{const hq=parseInt($("shq-"+item.id)?.value),ab=parseInt($("sab-"+item.id)?.value);if((!isNaN(hq)&&hq!==item.safeHQ)||(!isNaN(ab)&&ab!==item.safeAB))ch.push({itemId:item.id,safeHQ:isNaN(hq)?item.safeHQ:hq,safeAB:isNaN(ab)?item.safeAB:ab})});if(!ch.length){toast("沒有變更");return}showLoad("儲存安全庫存...");try{const res=await POST({action:"updateSafeStock",changes:ch});hideLoad();if(res.ok){toast(`已更新 ${ch.length} 項 ✓ 即時生效`,"success");loadAdmin();}else toast(res.error||"失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
 
 // 送洗後台
-function renderLaundryAdmin(laundry){const grp={};laundry.forEach(l=>{if(!grp[l.laundryId])grp[l.laundryId]={...l,lines:[]};grp[l.laundryId].lines.push(l)});if(!Object.keys(grp).length){$("laundry-admin").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:40px 0">尚無送洗紀錄</p>`;return}let html="";Object.values(grp).forEach(g=>{const sc=g.status==="送洗中"?"st-transit":"st-done";html+=`<div class="formcard"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div><div style="font-size:14px;font-weight:600">${g.laundryId}</div><div style="font-size:12px;color:var(--gr6)">${g.time}・${g.hall}館</div></div><span class="stbadge ${sc}">${g.status}</span></div>`;g.lines.forEach(l=>{html+=`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--gr1)"><span>${l.itemName}</span><span>送${l.qty}${l.returnQty?` / 回${l.returnQty}`:""}</span></div>`});if(g.status==="送洗中")html+=`<button class="sbtn red" style="margin-top:10px;padding:9px" onclick="delLaundry('${g.laundryId}')"><i class="ti ti-trash"></i> 刪除此記錄</button>`;html+=`</div>`});$("laundry-admin").innerHTML=html}
+function renderLaundryAdmin(laundry){
+  const grp={};
+  laundry.forEach(l=>{
+    if(!grp[l.laundryId])grp[l.laundryId]={laundryId:l.laundryId,time:l.time,hall:l.hall,status:l.status,note:l.note,lines:[]};
+    grp[l.laundryId].lines.push(l);
+    // 取最差狀態作為整批狀態
+    const order={"待收走":0,"送洗中":1,"部分取回":2,"已取回":3};
+    if((order[l.status]||0)<(order[grp[l.laundryId].status]||0))grp[l.laundryId].status=l.status;
+  });
+  if(!Object.keys(grp).length){$("laundry-admin").innerHTML=`<p style="text-align:center;color:var(--gr4);padding:40px 0">尚無送洗紀錄</p>`;return}
+  let html="";
+  Object.values(grp).forEach(g=>{
+    const sc=g.status==="已取回"?"st-done":g.status==="部分取回"?"st-transit":g.status==="送洗中"?"st-transit":"st-pending";
+    html+=`<div class="formcard">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div><div style="font-size:14px;font-weight:600">${g.laundryId}</div>
+        <div style="font-size:12px;color:var(--gr6)">${g.time}・${g.hall}館</div></div>
+        <span class="stbadge ${sc}">${g.status}</span>
+      </div>`;
+    g.lines.forEach(l=>{
+      const returned=Number(l.returnQty)||0;
+      const remaining=Number(l.qty)-returned;
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:6px 0;border-bottom:1px solid var(--gr1)">
+        <span>${l.itemName}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--gr6)">送${l.qty}件${returned>0?" / 已回"+returned:""}${remaining>0&&returned>0?` / 未回${remaining}`:""}</span>
+          ${g.status!=="已取回"&&g.status!=="待收走"?`<input type="number" min="0" max="${remaining>0?remaining:l.qty}" value="${remaining>0?remaining:0}" id="lret-${l.laundryId}-${l.itemId}" style="width:52px;padding:4px;border:1.5px solid var(--gr2);border-radius:var(--rsm);font-size:13px;text-align:center;background:var(--gl)">`:""}
+        </div>
+      </div>`;
+    });
+    // 操作按鈕
+    if(g.status==="待收走"){
+      html+=`<button class="sbtn blue" style="margin-top:10px;padding:9px" onclick="collectLaundry('${g.laundryId}')"><i class="ti ti-check"></i> 確認已收走</button>`;
+    }
+    if(g.status==="送洗中"||g.status==="部分取回"){
+      html+=`<button class="sbtn green" style="margin-top:10px;padding:9px" onclick="returnLaundryAdmin('${g.laundryId}',${JSON.stringify(g.lines.map(l=>l.itemId))})"><i class="ti ti-package-import"></i> 確認取回</button>`;
+    }
+    if(g.status==="待收走"||g.status==="送洗中"){
+      html+=`<button class="sbtn red" style="margin-top:6px;padding:9px" onclick="delLaundry('${g.laundryId}')"><i class="ti ti-trash"></i> 刪除記錄</button>`;
+    }
+    html+=`</div>`;
+  });
+  $("laundry-admin").innerHTML=html;
+}
+
+async function collectLaundry(laundryId){
+  showLoad("更新狀態...");
+  try{
+    const res=await POST({action:"updateLaundry",laundryId,subAction:"collect"});
+    // Note: need to send action in body differently
+    hideLoad();
+    if(res.ok){toast("已標記收走 ✓","success");GET({action:"getLaundry"}).then(r=>{if(r.ok)renderLaundryAdmin(r.laundry)});}
+    else toast(res.error||"失敗","error");
+  }catch(e){hideLoad();toast("網路錯誤","error")}
+}
+
+async function returnLaundryAdmin(laundryId,itemIds){
+  const returns=[];
+  itemIds.forEach(id=>{
+    const el=$("lret-"+laundryId+"-"+id);
+    if(el){const qty=parseFloat(el.value)||0;if(qty>0)returns.push({itemId:id,returnQty:qty});}
+  });
+  if(!returns.length){toast("請輸入取回數量","error");return}
+  showLoad("確認取回...");
+  try{
+    const res=await POST({action:"updateLaundry",laundryId,subAction:"return",returns});
+    hideLoad();
+    if(res.ok){toast("取回已確認 ✓","success");GET({action:"getLaundry"}).then(r=>{if(r.ok)renderLaundryAdmin(r.laundry)});}
+    else toast(res.error||"失敗","error");
+  }catch(e){hideLoad();toast("網路錯誤","error")}
+}
 async function delLaundry(laundryId){if(!confirm(`確定刪除 ${laundryId}？\n注意：庫存不會自動還原。`))return;showLoad("刪除中...");try{const res=await POST({action:"deleteLaundry",laundryId});hideLoad();if(res.ok){toast("已刪除 ✓","success");GET({action:"getLaundry"}).then(r=>{if(r.ok)renderLaundryAdmin(r.laundry)})}else toast("失敗","error")}catch(e){hideLoad();toast("網路錯誤","error")}}
 
 // 報表
